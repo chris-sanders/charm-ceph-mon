@@ -154,6 +154,9 @@ def get_ceph_context():
     if config('default-rbd-features'):
         cephcontext['rbd_features'] = config('default-rbd-features')
 
+    if config('chooseleaf-osd'):
+        cephcontext['chooseleaf_osd'] = config('chooseleaf-osd')
+
     # NOTE(dosaboy): these sections must correspond to what is supported in the
     #                config template.
     sections = ['global', 'mds', 'mon']
@@ -481,7 +484,10 @@ def radosgw_relation(relid=None, unit=None):
 
     # NOTE: radosgw needs some usage OSD storage, so defer key
     #       provision until OSD units are detected.
-    if ceph.is_quorum() and related_osds():
+    num_units = 3
+    if config('chooseleaf-osd'):
+        num_units = 1
+    if ceph.is_quorum() and related_osds(num_units):
         log('mon cluster in quorum and osds related '
             '- providing radosgw with keys')
         public_addr = get_public_addr()
@@ -511,7 +517,10 @@ def radosgw_relation(relid=None, unit=None):
 @hooks.hook('mds-relation-changed')
 @hooks.hook('mds-relation-joined')
 def mds_relation_joined(relid=None, unit=None):
-    if ceph.is_quorum() and related_osds():
+    num_units = 3
+    if config('chooseleaf-osd'):
+        num_units = 1
+    if ceph.is_quorum() and related_osds(num_units):
         log('mon cluster in quorum and OSDs related'
             '- providing mds client with keys')
         mds_name = relation_get(attribute='mds-name',

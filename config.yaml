@@ -84,6 +84,14 @@ options:
       .
       NOTE: Changing this configuration after deployment is not supported and
       new service units will not be able to join the cluster.
+  chooseleaf-osd:
+    type: boolean
+    default: false
+    description: |
+      Use osd as the bucket type for chooseleaf in a CRUSH rule.
+      .
+      For test and development environments this will allow single node ceph
+      clusters.
   monitor-count:
     type: int
     default: 3
