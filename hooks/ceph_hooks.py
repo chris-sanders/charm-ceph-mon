@@ -26,7 +26,10 @@ from ceph.broker import (
     process_requests
 )
 
-from charmhelpers.core import hookenv
+from charmhelpers.core import (
+    hookenv,
+    unitdata
+)
 from charmhelpers.core.hookenv import (
     log,
     DEBUG,
@@ -67,7 +70,11 @@ from charmhelpers.contrib.network.ip import (
 from charmhelpers.core.sysctl import create as create_sysctl
 from charmhelpers.core.templating import render
 from charmhelpers.contrib.storage.linux.ceph import (
-    CephConfContext)
+    CephConfContext,
+    remove_erasure_profile,
+    create_erasure_profile,
+    get_osds,
+)
 from utils import (
     get_networks,
     get_public_addr,
@@ -79,6 +86,8 @@ from charmhelpers.contrib.charmsupport import nrpe
 from charmhelpers.contrib.hardening.harden import harden
 
 hooks = Hooks()
+hook_data = unitdata.HookData()
+db = unitdata.kv()
 
 NAGIOS_PLUGINS = '/usr/local/lib/nagios/plugins'
 SCRIPTS_DIR = '/usr/local/bin'
@@ -175,6 +184,40 @@ def emit_cephconf():
 JOURNAL_ZAPPED = '/var/lib/ceph/journal_zapped'
 
 
+def set_failure_domain(failure_domain):
+    """Configures the default failure domain
+    Sets the failure type in CRUSH rule 0 and erasure profile default.
+    """
+    # Modify CRUSH rule 0
+    if cmp_pkgrevno('ceph', '12.0.0') >= 0:
+        cmds = ["ceph osd crush rule rm replicated_rule",
+                "ceph osd crush rule create-replicated replicated_rule "
+                "default {}".format(failure_domain)
+                ]
+    # Before luminous default rbd pool prevents deleting crush rule 0
+    else:
+        cmds = ["ceph osd getcrushmap -o /tmp/crush.map",
+                "crushtool -d /tmp/crush.map| "
+                "sed 's/step chooseleaf firstn 0 type host/step "
+                "chooseleaf firstn 0 type {}/' > "
+                "/tmp/crush.decompiled".format(failure_domain),
+                "crushtool -c /tmp/crush.decompiled -o /tmp/crush.map",
+                "crushtool -i /tmp/crush.map --test",
+                "ceph osd setcrushmap -i /tmp/crush.map"
+                ]
+    for cmd in cmds:
+        try:
+            subprocess.check_call(cmd, shell=True)
+        except subprocess.CalledProcessError as e:
+            log("Failed to set failure domain:", level='error')
+            log("Cmd: {}".format(cmd), level='error')
+            log("Error: {}".format(e.output), level='error')
+            break
+    # Modify erasure profile default
+    remove_erasure_profile('admin', 'default')
+    create_erasure_profile('admin', 'default', failure_domain=failure_domain)
+
+
 @hooks.hook('config-changed')
 @harden()
 def config_changed():
@@ -236,6 +279,8 @@ def config_changed():
         if cmp_pkgrevno('ceph', '12.0.0') >= 0:
             status_set('maintenance', 'Bootstrapping single Ceph MGR')
             ceph.bootstrap_manager()
+        if config('osd-failure-domain'):
+            set_failure_domain('osd')
 
 
 def get_mon_hosts():
@@ -386,6 +431,8 @@ def mon_relation():
                     "Your Juju environment doesn't"
                     "have support for Availability Zones"
                 )
+        elif is_leader() and config('osd-failure-domain'):
+            set_failure_domain('osd')
         notify_osds()
         notify_radosgws()
         notify_client()
@@ -457,15 +504,20 @@ def osd_relation(relid=None, unit=None):
 
 def related_osds(num_units=3):
     '''
-    Determine whether there are OSD units currently related
+    Determine whether there are OSD units currently available
 
+    Units are defined as either daemons or relations based on the
+    osd-failure-domain config.
     @param num_units: The minimum number of units required
     @return: boolean indicating whether the required number of
              units where detected.
     '''
     units = 0
-    for r_id in relation_ids('osd'):
-        units += len(related_units(r_id))
+    if config('osd-failure-domain'):
+        units = len(get_osds('admin'))
+    else:
+        for r_id in relation_ids('osd'):
+            units += len(related_units(r_id))
     if units >= num_units:
         return True
     return False
@@ -705,6 +757,11 @@ def assess_status():
     # active - bootstrapped + quorum status check
     if ceph.is_bootstrapped() and ceph.is_quorum():
         status_set('active', 'Unit is ready and clustered')
+        if config('osd-failure-domain') and db.get('related_osds') != 'True'\
+                and related_osds():
+            notify_radosgws()
+            notify_client()
+            db.set('related_osds', 'True')
     else:
         # Unit should be running and clustered, but no quorum
         # TODO: should this be blocked or waiting?
@@ -725,4 +782,5 @@ if __name__ == '__main__':
         hooks.execute(sys.argv)
     except UnregisteredHookError as e:
         log('Unknown hook {} - skipping.'.format(e))
-    assess_status()
+    with hook_data():
+        assess_status()

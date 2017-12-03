@@ -42,6 +42,7 @@ CHARM_CONFIG = {'config-flags': '',
                 'osd-journal-size': 1024,
                 'use-direct-io': True,
                 'osd-format': 'ext4',
+                'osd-failure-domain': False,
                 'monitor-hosts': '',
                 'prefer-ipv6': False,
                 'default-rbd-features': None,
@@ -223,11 +224,15 @@ class RelatedUnitsTestCase(unittest.TestCase):
     def setUp(self):
         super(RelatedUnitsTestCase, self).setUp()
 
+    @patch.object(ceph_hooks, 'config')
     @patch.object(ceph_hooks, 'relation_ids')
     @patch.object(ceph_hooks, 'related_units')
     def test_related_osd_single_relation(self,
                                          related_units,
-                                         relation_ids):
+                                         relation_ids,
+                                         mock_config):
+        config = copy.deepcopy(CHARM_CONFIG)
+        mock_config.side_effect = lambda key: config[key]
         relation_ids.return_value = ['osd:0']
         related_units.side_effect = lambda x: self._units.get(x)
         self.assertTrue(ceph_hooks.related_osds())
@@ -235,11 +240,15 @@ class RelatedUnitsTestCase(unittest.TestCase):
         relation_ids.assert_called_with('osd')
         related_units.assert_called_with('osd:0')
 
+    @patch.object(ceph_hooks, 'config')
     @patch.object(ceph_hooks, 'relation_ids')
     @patch.object(ceph_hooks, 'related_units')
     def test_related_osd_multi_relation(self,
                                         related_units,
-                                        relation_ids):
+                                        relation_ids,
+                                        mock_config):
+        config = copy.deepcopy(CHARM_CONFIG)
+        mock_config.side_effect = lambda key: config[key]
         relation_ids.return_value = ['osd:0', 'osd:23']
         related_units.side_effect = lambda x: self._units.get(x)
         self.assertTrue(ceph_hooks.related_osds())
@@ -250,6 +259,19 @@ class RelatedUnitsTestCase(unittest.TestCase):
             call('osd:0'),
             call('osd:23')
         ])
+
+    @patch.object(ceph_hooks, 'get_osds')
+    @patch.object(ceph_hooks, 'config')
+    def test_osd_failure_domain(self,
+                                mock_config,
+                                get_osds):
+        config = copy.deepcopy(CHARM_CONFIG)
+        config['osd-failure-domain'] = True
+        mock_config.side_effect = lambda key: config[key]
+        get_osds.return_value = ['osd.1']
+        self.assertTrue(ceph_hooks.related_osds(1))
+        self.assertFalse(ceph_hooks.related_osds())
+        self.assertFalse(ceph_hooks.related_osds(6))
 
     @patch.object(ceph_hooks.ceph, 'is_quorum')
     @patch.object(ceph_hooks, 'remote_unit')
