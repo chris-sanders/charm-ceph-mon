@@ -45,6 +45,7 @@ CHARM_CONFIG = {'config-flags': '',
                 'monitor-hosts': '',
                 'prefer-ipv6': False,
                 'default-rbd-features': None,
+                'chooseleaf-osd': False,
                 'nagios_degraded_thresh': '1',
                 'nagios_misplaced_thresh': '10',
                 'nagios_recovery_rate': '1',
@@ -110,6 +111,36 @@ class CephHooksTestCase(unittest.TestCase):
                     'public_addr': '10.0.0.1',
                     'use_syslog': 'true',
                     'rbd_features': 1}
+        self.assertEqual(ctxt, expected)
+
+    @patch.object(ceph_hooks, 'get_public_addr', lambda *args: "10.0.0.1")
+    @patch.object(ceph_hooks, 'get_cluster_addr', lambda *args: "10.1.0.1")
+    @patch.object(ceph_hooks, 'cmp_pkgrevno',
+                  lambda pkg, ver: -1 if ver == '12.1.0' else 1)
+    @patch.object(ceph_hooks, 'get_mon_hosts', lambda *args: ['10.0.0.1',
+                                                              '10.0.0.2'])
+    @patch.object(ceph_hooks, 'get_networks', lambda *args: "")
+    @patch.object(ceph_hooks, 'leader_get', lambda *args: '1234')
+    @patch.object(ceph, 'config')
+    @patch.object(ceph_hooks, 'config')
+    def test_get_ceph_context_chooseleaf_osd(self, mock_config, mock_config2):
+        config = copy.deepcopy(CHARM_CONFIG)
+        config['chooseleaf-osd'] = True
+        mock_config.side_effect = lambda key: config[key]
+        mock_config2.side_effect = lambda key: config[key]
+        ctxt = ceph_hooks.get_ceph_context()
+        expected = {'auth_supported': False,
+                    'ceph_cluster_network': '',
+                    'ceph_public_network': '',
+                    'cluster_addr': '10.1.0.1',
+                    'dio': 'true',
+                    'fsid': '1234',
+                    'loglevel': 1,
+                    'mon_hosts': '10.0.0.1 10.0.0.2',
+                    'old_auth': False,
+                    'public_addr': '10.0.0.1',
+                    'use_syslog': 'true',
+                    'chooseleaf_osd': True}
         self.assertEqual(ctxt, expected)
 
     @patch.object(ceph_hooks, 'get_public_addr', lambda *args: "10.0.0.1")
