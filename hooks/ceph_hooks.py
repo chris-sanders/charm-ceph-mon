@@ -69,7 +69,8 @@ from charmhelpers.core.templating import render
 from charmhelpers.contrib.storage.linux.ceph import (
     CephConfContext,
     remove_erasure_profile,
-    create_erasure_profile,
+    # create_erasure_profile, TODO: Fix for luminous
+    get_osds,
 )
 from utils import (
     get_networks,
@@ -189,7 +190,7 @@ def set_failure_domain(failure_domain):
         return
     # Modify CRUSH rule 0
     cmds = ["ceph osd crush rule rm replicated_rule",
-            "ceph osd crush rule create-replicated default "
+            "ceph osd crush rule create-replicated replicated_rule default "
             "{}".format(failure_domain)
             ]
     for cmd in cmds:
@@ -202,7 +203,18 @@ def set_failure_domain(failure_domain):
             break
     # Modify erasure profile default
     remove_erasure_profile('admin', 'default')
-    create_erasure_profile('admin', 'default', failure_domain=failure_domain)
+    # create_erasure_profile('admin', 'default', failure_domain=failure_domain)
+    cmds = ["ceph osd erasure-code-profile set default k=2 m=1 "
+            "crush-failure-domain={}".format(failure_domain)
+            ]
+    for cmd in cmds:
+        try:
+            subprocess.check_call(cmd, shell=True)
+        except subprocess.CalledProcessError as e:
+            log("Failed to set failure domain:", level='error')
+            log("Cmd: {}".format(cmd), level='error')
+            log("Error: {}".format(e.output), level='error')
+            break
 
 
 @hooks.hook('config-changed')
@@ -491,15 +503,20 @@ def osd_relation(relid=None, unit=None):
 
 def related_osds(num_units=3):
     '''
-    Determine whether there are OSD units currently related
+    Determine whether there are OSD units currently available
 
+    Units are defined as either daemons or relations based on the
+    osd-failure-domain config.
     @param num_units: The minimum number of units required
     @return: boolean indicating whether the required number of
              units where detected.
     '''
     units = 0
-    for r_id in relation_ids('osd'):
-        units += len(related_units(r_id))
+    if config('osd-failure-domain'):
+        units = len(get_osds('admin'))
+    else:
+        for r_id in relation_ids('osd'):
+            units += len(related_units(r_id))
     if units >= num_units:
         return True
     return False
@@ -515,10 +532,7 @@ def radosgw_relation(relid=None, unit=None):
 
     # NOTE: radosgw needs some usage OSD storage, so defer key
     #       provision until OSD units are detected.
-    num_units = 3
-    if config('osd-failure-domain'):
-        num_units = 1
-    if ceph.is_quorum() and related_osds(num_units):
+    if ceph.is_quorum() and related_osds():
         log('mon cluster in quorum and osds related '
             '- providing radosgw with keys')
         public_addr = get_public_addr()
@@ -548,10 +562,7 @@ def radosgw_relation(relid=None, unit=None):
 @hooks.hook('mds-relation-changed')
 @hooks.hook('mds-relation-joined')
 def mds_relation_joined(relid=None, unit=None):
-    num_units = 3
-    if config('osd-failure-domain'):
-        num_units = 1
-    if ceph.is_quorum() and related_osds(num_units):
+    if ceph.is_quorum() and related_osds():
         log('mon cluster in quorum and OSDs related'
             '- providing mds client with keys')
         mds_name = relation_get(attribute='mds-name',
