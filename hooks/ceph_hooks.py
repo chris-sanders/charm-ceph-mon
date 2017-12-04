@@ -67,7 +67,10 @@ from charmhelpers.contrib.network.ip import (
 from charmhelpers.core.sysctl import create as create_sysctl
 from charmhelpers.core.templating import render
 from charmhelpers.contrib.storage.linux.ceph import (
-    CephConfContext)
+    CephConfContext,
+    remove_erasure_profile,
+    create_erasure_profile,
+)
 from utils import (
     get_networks,
     get_public_addr,
@@ -154,9 +157,6 @@ def get_ceph_context():
     if config('default-rbd-features'):
         cephcontext['rbd_features'] = config('default-rbd-features')
 
-    if config('chooseleaf-osd'):
-        cephcontext['chooseleaf_osd'] = config('chooseleaf-osd')
-
     # NOTE(dosaboy): these sections must correspond to what is supported in the
     #                config template.
     sections = ['global', 'mds', 'mon']
@@ -176,6 +176,33 @@ def emit_cephconf():
 
 
 JOURNAL_ZAPPED = '/var/lib/ceph/journal_zapped'
+
+
+def set_failure_domain(failure_domain):
+    """Configures the default failure domain
+    Sets the failure type to OSD in CRUSH rule 0 and erasure profile default.
+    """
+    if not cmp_pkgrevno('ceph', '12.0.0') >= 0:
+        status_set('maintenance', 'OSD failure domain not supported before'
+                   'luminous')
+        log("Skipping osd failure domain before luminous", level='warning')
+        return
+    # Modify CRUSH rule 0
+    cmds = ["ceph osd crush rule rm replicated_rule",
+            "ceph osd crush rule create-replicated default "
+            "{}".format(failure_domain)
+            ]
+    for cmd in cmds:
+        try:
+            subprocess.check_call(cmd, shell=True)
+        except subprocess.CalledProcessError as e:
+            log("Failed to set failure domain:", level='error')
+            log("Cmd: {}".format(cmd), level='error')
+            log("Error: {}".format(e.output), level='error')
+            break
+    # Modify erasure profile default
+    remove_erasure_profile('admin', 'default')
+    create_erasure_profile('admin', 'default', failure_domain=failure_domain)
 
 
 @hooks.hook('config-changed')
@@ -239,6 +266,8 @@ def config_changed():
         if cmp_pkgrevno('ceph', '12.0.0') >= 0:
             status_set('maintenance', 'Bootstrapping single Ceph MGR')
             ceph.bootstrap_manager()
+        if config('osd-failure-domain'):
+            set_failure_domain('osd')
 
 
 def get_mon_hosts():
@@ -389,6 +418,8 @@ def mon_relation():
                     "Your Juju environment doesn't"
                     "have support for Availability Zones"
                 )
+        elif is_leader() and config('osd-failure-domain'):
+            set_failure_domain('osd')
         notify_osds()
         notify_radosgws()
         notify_client()
@@ -485,7 +516,7 @@ def radosgw_relation(relid=None, unit=None):
     # NOTE: radosgw needs some usage OSD storage, so defer key
     #       provision until OSD units are detected.
     num_units = 3
-    if config('chooseleaf-osd'):
+    if config('osd-failure-domain'):
         num_units = 1
     if ceph.is_quorum() and related_osds(num_units):
         log('mon cluster in quorum and osds related '
@@ -518,7 +549,7 @@ def radosgw_relation(relid=None, unit=None):
 @hooks.hook('mds-relation-joined')
 def mds_relation_joined(relid=None, unit=None):
     num_units = 3
-    if config('chooseleaf-osd'):
+    if config('osd-failure-domain'):
         num_units = 1
     if ceph.is_quorum() and related_osds(num_units):
         log('mon cluster in quorum and OSDs related'

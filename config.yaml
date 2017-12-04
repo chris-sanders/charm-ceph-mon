@@ -84,14 +84,6 @@ options:
       .
       NOTE: Changing this configuration after deployment is not supported and
       new service units will not be able to join the cluster.
-  chooseleaf-osd:
-    type: boolean
-    default: false
-    description: |
-      Use osd as the bucket type for chooseleaf in a CRUSH rule.
-      .
-      For test and development environments this will allow single node ceph
-      clusters.
   monitor-count:
     type: int
     default: 3
@@ -185,6 +177,14 @@ options:
     description: |
       Setting this to true will tell Ceph to replicate across Juju's
       Availability Zone instead of specifically by host.
+  osd-failure-domain:
+    type: boolean
+    default: false
+    description: |
+      Setting this to true will set the failure domain to OSD.
+      .
+      For test and development environments this will allow single node ceph
+      deployments.
   nagios_context:
     type: string
     default: "juju"
