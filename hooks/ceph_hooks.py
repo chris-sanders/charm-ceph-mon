@@ -175,6 +175,21 @@ def emit_cephconf():
 JOURNAL_ZAPPED = '/var/lib/ceph/journal_zapped'
 
 
+def enable_multiple_fs():
+    """Enables multiple file system support"""
+    log(message='Multiple file systems is not considered stable', level='warn')
+    cmds = ["ceph fs flag set enable_multiple true --yes-i-really-mean-it",
+            ]
+    for cmd in cmds:
+        try:
+            subprocess.check_call(cmd, shell=True)
+        except subprocess.CalledProcessError as e:
+            log("Failed to set multiple file systems:", level='error')
+            log("Cmd: {}".format(cmd), level='error')
+            log("Error: {}".format(e.output), level='error')
+            break
+
+
 @hooks.hook('config-changed')
 @harden()
 def config_changed():
@@ -236,6 +251,8 @@ def config_changed():
         if cmp_pkgrevno('ceph', '12.0.0') >= 0:
             status_set('maintenance', 'Bootstrapping single Ceph MGR')
             ceph.bootstrap_manager()
+        if config('allow-multiple-fs'):
+            enable_multiple_fs()
 
 
 def get_mon_hosts():
@@ -386,6 +403,8 @@ def mon_relation():
                     "Your Juju environment doesn't"
                     "have support for Availability Zones"
                 )
+        if is_leader() and config('allow-multiple-fs'):
+            enable_multiple_fs()
         notify_osds()
         notify_radosgws()
         notify_client()
