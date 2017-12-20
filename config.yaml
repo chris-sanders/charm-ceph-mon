@@ -244,3 +244,8 @@ options:
       from the ceph all-in-one charm to a ceph-mon / ceph-osd deployment.
       Refer to the Charm Deployment guide at https://docs.openstack.org/charm-deployment-guide/latest/
       for more information.
+  allow-multiple-fs:
+    type: boolean
+    default: False
+    description: |
+      Enable experimental feature to allow multiple ceph-fs.
