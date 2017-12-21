@@ -26,7 +26,10 @@ from ceph.broker import (
     process_requests
 )
 
-from charmhelpers.core import hookenv
+from charmhelpers.core import (
+    hookenv,
+    unitdata
+)
 from charmhelpers.core.hookenv import (
     log,
     DEBUG,
@@ -771,6 +774,11 @@ def assess_status():
     # active - bootstrapped + quorum status check
     if ceph.is_bootstrapped() and ceph.is_quorum():
         status_set('active', 'Unit is ready and clustered')
+        if config('osd-failure-domain') and unitdata.kv().get('related_osds') != 'True'\
+                and related_osds():
+            notify_radosgws()
+            notify_client()
+            unitdata.kv().set('related_osds', 'True')
     else:
         # Unit should be running and clustered, but no quorum
         # TODO: should this be blocked or waiting?
