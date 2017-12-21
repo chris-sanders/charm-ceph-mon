@@ -587,7 +587,7 @@ def mds_relation_joined(relid=None, unit=None):
         public_addr = get_public_addr()
         data = {
             'fsid': leader_get('fsid'),
-            'mds_key': ceph.get_mds_key(name=mds_name),
+            'mds-key-{}'.format(mds_name): ceph.get_mds_key(name=mds_name),
             'auth': config('auth-supported'),
             'ceph-public-address': public_addr}
         settings = relation_get(rid=relid, unit=unit)
