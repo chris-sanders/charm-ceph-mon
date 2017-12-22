@@ -81,7 +81,7 @@ POOL_KEYS = {
     "cache_min_flush_age": [int],
     "cache_min_evict_age": [int],
     "fast_read": [bool],
-    "allow_ec_overwrites": [str, ["true", "false"]],
+    "allow_ec_overwrites": [bool],
 }
 
 CEPH_BUCKET_TYPES = [
