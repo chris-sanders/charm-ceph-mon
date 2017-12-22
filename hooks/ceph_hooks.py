@@ -86,6 +86,8 @@ from charmhelpers.contrib.charmsupport import nrpe
 from charmhelpers.contrib.hardening.harden import harden
 
 hooks = Hooks()
+hook_data = unitdata.HookData()
+db = unitdata.kv()
 
 NAGIOS_PLUGINS = '/usr/local/lib/nagios/plugins'
 SCRIPTS_DIR = '/usr/local/bin'
@@ -774,11 +776,11 @@ def assess_status():
     # active - bootstrapped + quorum status check
     if ceph.is_bootstrapped() and ceph.is_quorum():
         status_set('active', 'Unit is ready and clustered')
-        if config('osd-failure-domain') and unitdata.kv().get('related_osds') != 'True'\
+        if config('osd-failure-domain') and db.get('related_osds') != 'True'\
                 and related_osds():
             notify_radosgws()
             notify_client()
-            unitdata.kv().set('related_osds', 'True')
+            db.set('related_osds', 'True')
     else:
         # Unit should be running and clustered, but no quorum
         # TODO: should this be blocked or waiting?
@@ -799,4 +801,5 @@ if __name__ == '__main__':
         hooks.execute(sys.argv)
     except UnregisteredHookError as e:
         log('Unknown hook {} - skipping.'.format(e))
-    assess_status()
+    with hook_data():
+        assess_status()
