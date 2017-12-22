@@ -517,7 +517,8 @@ def pool_set(service, pool_name, key, value):
     :param value:
     :return: None.  Can raise CalledProcessError
     """
-    cmd = ['ceph', '--id', service, 'osd', 'pool', 'set', pool_name, key, value]
+    cmd = ['ceph', '--id', service, 'osd', 'pool', 'set', pool_name, key,
+           str(value).lower()]
     try:
         check_call(cmd)
     except CalledProcessError:
