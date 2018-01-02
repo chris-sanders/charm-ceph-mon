@@ -199,8 +199,8 @@ def set_failure_domain(failure_domain):
         cmds = ["ceph osd getcrushmap -o /tmp/crush.map",
                 "crushtool -d /tmp/crush.map| "
                 "sed 's/step chooseleaf firstn 0 type host/step "
-                "chooseleaf firstn 0 type osd/' > "
-                "/tmp/crush.decompiled",
+                "chooseleaf firstn 0 type {}/' > "
+                "/tmp/crush.decompiled".format(failure_domain),
                 "crushtool -c /tmp/crush.decompiled -o /tmp/crush.map",
                 "crushtool -i /tmp/crush.map --test",
                 "ceph osd setcrushmap -i /tmp/crush.map"
