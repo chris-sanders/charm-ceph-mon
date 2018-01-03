@@ -186,7 +186,7 @@ JOURNAL_ZAPPED = '/var/lib/ceph/journal_zapped'
 
 def set_failure_domain(failure_domain):
     """Configures the default failure domain
-    Sets the failure type to OSD in CRUSH rule 0 and erasure profile default.
+    Sets the failure type in CRUSH rule 0 and erasure profile default.
     """
     # Modify CRUSH rule 0
     if cmp_pkgrevno('ceph', '12.0.0') >= 0:
