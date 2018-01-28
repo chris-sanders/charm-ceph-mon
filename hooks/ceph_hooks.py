@@ -218,6 +218,21 @@ def set_failure_domain(failure_domain):
     create_erasure_profile('admin', 'default', failure_domain=failure_domain)
 
 
+def enable_multiple_fs():
+    """Enables multiple file system support"""
+    log(message='Multiple file systems is not considered stable', level='warn')
+    cmds = ["ceph fs flag set enable_multiple true --yes-i-really-mean-it",
+            ]
+    for cmd in cmds:
+        try:
+            subprocess.check_call(cmd, shell=True)
+        except subprocess.CalledProcessError as e:
+            log("Failed to set multiple file systems:", level='error')
+            log("Cmd: {}".format(cmd), level='error')
+            log("Error: {}".format(e.output), level='error')
+            break
+
+
 @hooks.hook('config-changed')
 @harden()
 def config_changed():
@@ -281,6 +296,8 @@ def config_changed():
             ceph.bootstrap_manager()
         if config('osd-failure-domain'):
             set_failure_domain('osd')
+        if config('allow-multiple-fs'):
+            enable_multiple_fs()
 
 
 def get_mon_hosts():
@@ -433,6 +450,8 @@ def mon_relation():
                 )
         elif is_leader() and config('osd-failure-domain'):
             set_failure_domain('osd')
+        if is_leader() and config('allow-multiple-fs'):
+            enable_multiple_fs()
         notify_osds()
         notify_radosgws()
         notify_client()
@@ -573,7 +592,7 @@ def mds_relation_joined(relid=None, unit=None):
         public_addr = get_public_addr()
         data = {
             'fsid': leader_get('fsid'),
-            'mds_key': ceph.get_mds_key(name=mds_name),
+            'mds-key-{}'.format(mds_name): ceph.get_mds_key(name=mds_name),
             'auth': config('auth-supported'),
             'ceph-public-address': public_addr}
         settings = relation_get(rid=relid, unit=unit)
